@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comic Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* Gallery View */
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .gallery a {
+            display: block;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            background-color: #2a2a2a;
+        }
+
+        .gallery a:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .gallery img {
+            width: 100%;
+            height: auto;
+            display: block;
+            transition: transform 0.3s ease;
+        }
+
+        .gallery a:hover img {
+            transform: scale(1.05);
+        }
+
+        /* Carousel View */
+        .carousel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #000000;
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+        }
+
+        .carousel.active {
+            display: flex;
+        }
+
+        .carousel-header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1001;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .close-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            font-size: 24px;
+            width: 44px;
+            height: 44px;
+            border-radius: 22px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .close-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .page-counter {
+            background: rgba(0,0,0,0.7);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+        }
+
+        .carousel-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .carousel-slides {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .carousel-slide {
+            min-width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .carousel-slide img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        .nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            font-size: 24px;
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            z-index: 1001;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .nav-btn.prev {
+            left: 20px;
+        }
+
+        .nav-btn.next {
+            right: 20px;
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .nav-btn:disabled:hover {
+            transform: translateY(-50%) scale(1);
+            background: rgba(255,255,255,0.2);
+        }
+
+        /* Touch indicators */
+        .carousel-slide {
+            touch-action: pan-y;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .gallery {
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
+                padding: 15px;
+            }
+
+            .carousel-header {
+                padding: 15px;
+            }
+
+            .carousel-slide {
+                padding: 10px;
+            }
+
+            .nav-btn {
+                width: 44px;
+                height: 44px;
+                font-size: 20px;
+            }
+
+            .nav-btn.prev {
+                left: 15px;
+            }
+
+            .nav-btn.next {
+                right: 15px;
+            }
+        }
+
+        /* Loading animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #ffffff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="gallery" id="gallery">
+        <a href="#" data-comic="0">
+            <img src="https://1drv.ms/i/c/11d772067b10b358/IQRMKgEFRo2eQou3SOM_9QjsAfUD1SkSbT7oB-vTw0hgPB0?width=1988&height=3056" alt="Comic 1" />
+        </a>
+        <a href="#" data-comic="1">
+            <img src="https://via.placeholder.com/400x600/333/fff?text=Comic+2" alt="Comic 2">
+        </a>
+        <a href="#" data-comic="2">
+            <img src="https://via.placeholder.com/400x600/444/fff?text=Comic+3" alt="Comic 3">
+        </a>
+        <!-- Add more comics as needed -->
+    </div>
+
+    <div class="carousel" id="carousel">
+        <div class="carousel-header">
+            <button class="close-btn" id="closeBtn">&times;</button>
+            <div class="page-counter">
+                <span id="currentPage">1</span> / <span id="totalPages">1</span>
+            </div>
+        </div>
+        
+        <div class="carousel-container">
+            <div class="carousel-slides" id="carouselSlides">
+                <!-- Slides will be populated by JavaScript -->
+            </div>
+            
+            <button class="nav-btn prev" id="prevBtn">&#8249;</button>
+            <button class="nav-btn next" id="nextBtn">&#8250;</button>
+        </div>
+    </div>
+
+    <script>
+        class ComicViewer {
+            constructor() {
+                this.comics = [
+                    "https://1drv.ms/i/c/11d772067b10b358/IQRMKgEFRo2eQou3SOM_9QjsAfUD1SkSbT7oB-vTw0hgPB0?width=1988&height=3056",
+                    "https://1drv.ms/i/c/11d772067b10b358/IQTMbB2V3jgbRIcXp_XdYYOeAf1VqeWCuoqvwDMf8JhYMYQ?width=1988&height=3056",
+                    "https://via.placeholder.com/800x1200/444/fff?text=Comic+Page+3"
+                ];
+                
+                this.currentIndex = 0;
+                this.touchStartX = 0;
+                this.touchEndX = 0;
+                this.isTransitioning = false;
+                
+                this.initElements();
+                this.bindEvents();
+            }
+
+            initElements() {
+                this.gallery = document.getElementById('gallery');
+                this.carousel = document.getElementById('carousel');
+                this.carouselSlides = document.getElementById('carouselSlides');
+                this.closeBtn = document.getElementById('closeBtn');
+                this.prevBtn = document.getElementById('prevBtn');
+                this.nextBtn = document.getElementById('nextBtn');
+                this.currentPageSpan = document.getElementById('currentPage');
+                this.totalPagesSpan = document.getElementById('totalPages');
+            }
+
+            bindEvents() {
+                // Gallery click events
+                this.gallery.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const link = e.target.closest('a[data-comic]');
+                    if (link) {
+                        const comicIndex = parseInt(link.dataset.comic);
+                        this.openCarousel(comicIndex);
+                    }
+                });
+
+                // Carousel controls
+                this.closeBtn.addEventListener('click', () => this.closeCarousel());
+                this.prevBtn.addEventListener('click', () => this.prevSlide());
+                this.nextBtn.addEventListener('click', () => this.nextSlide());
+
+                // Keyboard navigation
+                document.addEventListener('keydown', (e) => {
+                    if (!this.carousel.classList.contains('active')) return;
+                    
+                    switch(e.key) {
+                        case 'Escape':
+                            this.closeCarousel();
+                            break;
+                        case 'ArrowLeft':
+                            this.prevSlide();
+                            break;
+                        case 'ArrowRight':
+                            this.nextSlide();
+                            break;
+                    }
+                });
+
+                // Touch events for swipe
+                this.carouselSlides.addEventListener('touchstart', (e) => {
+                    this.touchStartX = e.touches[0].clientX;
+                });
+
+                this.carouselSlides.addEventListener('touchmove', (e) => {
+                    e.preventDefault(); // Prevent scrolling
+                });
+
+                this.carouselSlides.addEventListener('touchend', (e) => {
+                    this.touchEndX = e.changedTouches[0].clientX;
+                    this.handleSwipe();
+                });
+
+                // Prevent context menu on long press
+                this.carousel.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                });
+            }
+
+            handleSwipe() {
+                const swipeThreshold = 50;
+                const swipeDistance = this.touchStartX - this.touchEndX;
+
+                if (Math.abs(swipeDistance) > swipeThreshold) {
+                    if (swipeDistance > 0) {
+                        this.nextSlide();
+                    } else {
+                        this.prevSlide();
+                    }
+                }
+            }
+
+            openCarousel(startIndex = 0) {
+                this.currentIndex = startIndex;
+                this.createSlides();
+                this.updateCarousel();
+                this.carousel.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+
+            closeCarousel() {
+                this.carousel.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+
+            createSlides() {
+                this.carouselSlides.innerHTML = '';
+                
+                this.comics.forEach((src, index) => {
+                    const slide = document.createElement('div');
+                    slide.className = 'carousel-slide';
+                    
+                    const img = document.createElement('img');
+                    img.src = src;
+                    img.alt = `Comic page ${index + 1}`;
+                    img.loading = 'lazy';
+                    
+                    slide.appendChild(img);
+                    this.carouselSlides.appendChild(slide);
+                });
+                
+                this.totalPagesSpan.textContent = this.comics.length;
+            }
+
+            updateCarousel() {
+                if (this.isTransitioning) return;
+                
+                this.isTransitioning = true;
+                
+                const translateX = -this.currentIndex * 100;
+                this.carouselSlides.style.transform = `translateX(${translateX}vw)`;
+                
+                this.currentPageSpan.textContent = this.currentIndex + 1;
+                
+                // Update navigation buttons
+                this.prevBtn.disabled = this.currentIndex === 0;
+                this.nextBtn.disabled = this.currentIndex === this.comics.length - 1;
+                
+                setTimeout(() => {
+                    this.isTransitioning = false;
+                }, 300);
+            }
+
+            prevSlide() {
+                if (this.currentIndex > 0 && !this.isTransitioning) {
+                    this.currentIndex--;
+                    this.updateCarousel();
+                }
+            }
+
+            nextSlide() {
+                if (this.currentIndex < this.comics.length - 1 && !this.isTransitioning) {
+                    this.currentIndex++;
+                    this.updateCarousel();
+                }
+            }
+        }
+
+        // Initialize the comic viewer when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new ComicViewer();
+        });
+    </script>
+</body>
+</html>
