@@ -237,8 +237,8 @@
 </head>
 <body>
     <div class="gallery" id="gallery">
-        <a href="#" data-comic="0">
-            <img src="https://1drv.ms/i/c/11d772067b10b358/IQRMKgEFRo2eQou3SOM_9QjsAfUD1SkSbT7oB-vTw0hgPB0?width=1988&height=3056" alt="Comic 1" />
+        <a href="#" data-comic="0" link="https://www.zipcomic.com/guardians-of-the-galaxy-2023-issue-1">
+            <img src="https://1drv.ms/i/c/11d772067b10b358/IQRMKgEFRo2eQou3SOM_9QjsAfUD1SkSbT7oB-vTw0hgPB0?width=1988&height=3056" alt="" />
         </a>
         <a href="#" data-comic="1">
             <img src="https://via.placeholder.com/400x600/333/fff?text=Comic+2" alt="Comic 2">
@@ -270,11 +270,7 @@
     <script>
         class ComicViewer {
             constructor() {
-                this.comics = [
-                    "https://1drv.ms/i/c/11d772067b10b358/IQRMKgEFRo2eQou3SOM_9QjsAfUD1SkSbT7oB-vTw0hgPB0?width=1988&height=3056",
-                    "https://1drv.ms/i/c/11d772067b10b358/IQTMbB2V3jgbRIcXp_XdYYOeAf1VqeWCuoqvwDMf8JhYMYQ?width=1988&height=3056",
-                    "https://via.placeholder.com/800x1200/444/fff?text=Comic+Page+3"
-                ];
+                this.comics = [];
                 
                 this.currentIndex = 0;
                 this.touchStartX = 0;
@@ -298,12 +294,25 @@
 
             bindEvents() {
                 // Gallery click events
-                this.gallery.addEventListener('click', (e) => {
+                this.gallery.addEventListener('click', async (e) => {
                     e.preventDefault();
                     const link = e.target.closest('a[data-comic]');
                     if (link) {
-                        const comicIndex = parseInt(link.dataset.comic);
-                        this.openCarousel(comicIndex);
+                        const srcs = link.getAttribute('link');
+                        
+                        // Show loading state (optional)
+                        this.showLoading();
+                        
+                        try {
+                            await this.getComics(srcs); // Wait for comics to load
+                            const comicIndex = parseInt(link.dataset.comic);
+                            this.openCarousel(comicIndex);
+                        } catch (error) {
+                            console.error('Failed to load comics:', error);
+                            this.hideLoading();
+                            // Optionally show error message to user
+                            alert('Failed to load comic images. Please try again.');
+                        }
                     }
                 });
 
@@ -362,12 +371,57 @@
                 }
             }
 
+            // Fixed getComics method with proper async handling
+            async getComics(url) {
+                try {
+                    const response = await fetch(`https://cosmic-yeot-6b8ffe.netlify.app/.netlify/functions/hello-world?url=${encodeURIComponent(url)}`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Check if the response has the expected structure
+                    if (data && data.allImageSrcs && Array.isArray(data.allImageSrcs)) {
+                        this.comics = data.allImageSrcs;
+                        console.log('Comics loaded:', this.comics.length, 'images');
+                    } else {
+                        console.error('Unexpected response structure:', data);
+                        this.comics = [];
+                    }
+                } catch (error) {
+                    console.error('Error fetching comics:', error);
+                    this.comics = [];
+                    throw error; // Re-throw so the caller can handle it
+                }
+            }
+
+            // Optional loading state methods
+            showLoading() {
+                // You can implement a loading spinner/message here
+                console.log('Loading comics...');
+                // Example: show a loading overlay
+                // document.body.style.cursor = 'wait';
+            }
+
+            hideLoading() {
+                console.log('Loading complete');
+                // document.body.style.cursor = 'default';
+            }
+
             openCarousel(startIndex = 0) {
+                if (this.comics.length === 0) {
+                    console.warn('No comics to display');
+                    return;
+                }
+                
                 this.currentIndex = startIndex;
                 this.createSlides();
                 this.updateCarousel();
                 this.carousel.classList.add('active');
                 document.body.style.overflow = 'hidden';
+                this.hideLoading(); // Hide loading when carousel opens
             }
 
             closeCarousel() {
@@ -387,6 +441,12 @@
                     img.alt = `Comic page ${index + 1}`;
                     img.loading = 'lazy';
                     
+                    // Add error handling for individual images
+                    img.onerror = function() {
+                        console.warn('Failed to load image:', src);
+                        this.style.display = 'none';
+                    };
+                    
                     slide.appendChild(img);
                     this.carouselSlides.appendChild(slide);
                 });
@@ -395,7 +455,7 @@
             }
 
             updateCarousel() {
-                if (this.isTransitioning) return;
+                if (this.isTransitioning || this.comics.length === 0) return;
                 
                 this.isTransitioning = true;
                 
