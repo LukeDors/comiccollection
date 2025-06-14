@@ -80,43 +80,6 @@
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
-        .multiselect {
-            position: relative;
-        }
-
-        .multiselect-dropdown {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: white;
-            border: 2px solid #ddd;
-            border-top: none;
-            border-radius: 0 0 8px 8px;
-            max-height: 200px;
-            overflow-y: auto;
-            z-index: 1000;
-            display: none;
-        }
-
-        .multiselect-option {
-            padding: 10px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .multiselect-option:hover {
-            background-color: #f0f0f0;
-        }
-
-        .multiselect-option.selected {
-            background-color: #667eea;
-            color: white;
-        }
-
         .breadcrumb {
             display: flex;
             align-items: center;
@@ -391,6 +354,51 @@
             display: block;
         }
 
+        .carousel-slide {
+            overflow: hidden;
+            position: relative;
+            cursor: grab;
+        }
+
+        .carousel-slide.panning {
+            cursor: grabbing;
+        }
+
+        .carousel-slide img {
+            transition: transform 0.1s ease-out;
+            transform-origin: center center;
+        }
+
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 1001;
+        }
+
+        .zoom-btn {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: background-color 0.3s;
+        }
+
+        .zoom-btn:hover {
+            background: rgba(0, 0, 0, 0.9);
+        }
+
+        .zoom-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 10px;
@@ -446,13 +454,11 @@
                 </div>
                 
                 <div class="control-group">
-                    <label for="superheroFilter">Filter by Superhero</label>
-                    <div class="multiselect">
-                        <input type="text" id="superheroFilter" placeholder="Select superheroes..." readonly>
-                        <div class="multiselect-dropdown" id="superheroDropdown">
-                            <!-- Options will be populated by JavaScript -->
-                        </div>
-                    </div>
+                    <label for="superheroFilter">Select Superhero</label>
+                    <select id="superheroFilter">
+                        <option value="">All Comics</option>
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
                 </div>
             </div>
         </div>
@@ -507,6 +513,13 @@
     <script>
         class ComicViewer {
             constructor() {
+
+                this.homepages = {
+                    'All Comics': 'https://gist.githubusercontent.com/LukeDors/348dea3f4a8e765839bba385d58d3e18/raw/3d2b852dfadc5e9a0f67b22778029d7a14e99dd1/comicdata.json',
+                    'Batman': 'https://gist.githubusercontent.com/LukeDors/32500b8fbf50afe6db1b2e0527d98cf3/raw/7d07a60995e772dbe24d289fa6227e992eefe361/batmancomics.json',
+                    'Moon Knight': 'https://gist.githubusercontent.com/LukeDors/5ccec76d816da2cb6a50d2e00187d760/raw/a935d098f60d614aa6ffde80daca5c17a48cb0bd/moonknight.json'
+                };
+
                 this.comics = [];
                 this.filteredComics = [];
                 this.selectedSuperheroes = new Set();
@@ -523,6 +536,7 @@
                 this.initElements();
                 this.bindEvents();
                 this.loadComicsData();
+                this.initPanZoom();
             }
 
             initElements() {
@@ -548,6 +562,166 @@
                 this.totalChapters = document.getElementById('totalChapters');
                 this.seriesYear = document.getElementById('seriesYear');
                 this.chaptersGrid = document.getElementById('chaptersGrid');
+            }
+
+            initPanZoom() {
+                this.zoomLevel = 1;
+                this.panX = 0;
+                this.panY = 0;
+                this.isPanning = false;
+                this.lastPanX = 0;
+                this.lastPanY = 0;
+                
+                // Add zoom controls to carousel
+                const zoomControls = document.createElement('div');
+                zoomControls.className = 'zoom-controls';
+                zoomControls.innerHTML = `
+                    <button class="zoom-btn" id="zoomOutBtn">−</button>
+                    <button class="zoom-btn" id="resetZoomBtn">Reset</button>
+                    <button class="zoom-btn" id="zoomInBtn">+</button>
+                `;
+                
+                this.carousel.querySelector('.carousel-container').appendChild(zoomControls);
+                
+                // Bind zoom control events
+                document.getElementById('zoomInBtn').addEventListener('click', () => this.zoomIn());
+                document.getElementById('zoomOutBtn').addEventListener('click', () => this.zoomOut());
+                document.getElementById('resetZoomBtn').addEventListener('click', () => this.resetZoom());
+            }
+
+            bindPanZoomEvents() {
+                // Mouse events
+                this.carouselSlides.addEventListener('mousedown', (e) => this.startPan(e.clientX, e.clientY));
+                this.carouselSlides.addEventListener('mousemove', (e) => this.updatePan(e.clientX, e.clientY));
+                this.carouselSlides.addEventListener('mouseup', () => this.endPan());
+                this.carouselSlides.addEventListener('mouseleave', () => this.endPan());
+                
+                // Touch events for pan (separate from swipe)
+                this.carouselSlides.addEventListener('touchstart', (e) => {
+                    if (e.touches.length === 1 && this.zoomLevel > 1) {
+                        e.preventDefault();
+                        this.startPan(e.touches[0].clientX, e.touches[0].clientY);
+                    }
+                });
+                
+                this.carouselSlides.addEventListener('touchmove', (e) => {
+                    if (e.touches.length === 1 && this.isPanning) {
+                        e.preventDefault();
+                        this.updatePan(e.touches[0].clientX, e.touches[0].clientY);
+                    }
+                });
+                
+                this.carouselSlides.addEventListener('touchend', () => {
+                    if (this.isPanning) {
+                        this.endPan();
+                    }
+                });
+                
+                // Pinch zoom for mobile
+                this.carouselSlides.addEventListener('touchstart', (e) => {
+                    if (e.touches.length === 2) {
+                        e.preventDefault();
+                        this.lastPinchDistance = this.getPinchDistance(e.touches);
+                    }
+                });
+                
+                this.carouselSlides.addEventListener('touchmove', (e) => {
+                    if (e.touches.length === 2) {
+                        e.preventDefault();
+                        const currentPinchDistance = this.getPinchDistance(e.touches);
+                        const pinchRatio = currentPinchDistance / this.lastPinchDistance;
+                        this.zoom(this.zoomLevel * pinchRatio);
+                        this.lastPinchDistance = currentPinchDistance;
+                    }
+                });
+                
+                // Mouse wheel zoom
+                this.carouselSlides.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
+                    this.zoom(this.zoomLevel * zoomDelta);
+                });
+            }
+
+            getPinchDistance(touches) {
+                const dx = touches[0].clientX - touches[1].clientX;
+                const dy = touches[0].clientY - touches[1].clientY;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            startPan(x, y) {
+                if (this.zoomLevel <= 1) return;
+                
+                this.isPanning = true;
+                this.lastPanX = x;
+                this.lastPanY = y;
+                this.carouselSlides.classList.add('panning');
+            }
+
+            updatePan(x, y) {
+                if (!this.isPanning) return;
+                
+                const deltaX = x - this.lastPanX;
+                const deltaY = y - this.lastPanY;
+                
+                this.panX += deltaX;
+                this.panY += deltaY;
+                
+                this.lastPanX = x;
+                this.lastPanY = y;
+                
+                this.applyTransform();
+            }
+
+            endPan() {
+                this.isPanning = false;
+                this.carouselSlides.classList.remove('panning');
+            }
+
+            zoomIn() {
+                this.zoom(this.zoomLevel * 1.2);
+            }
+
+            zoomOut() {
+                this.zoom(this.zoomLevel * 0.8);
+            }
+
+            zoom(newZoomLevel) {
+                this.zoomLevel = Math.max(1, Math.min(5, newZoomLevel));
+                
+                if (this.zoomLevel === 1) {
+                    this.panX = 0;
+                    this.panY = 0;
+                }
+                
+                this.applyTransform();
+                this.updateZoomControls();
+            }
+
+            resetZoom() {
+                this.zoomLevel = 1;
+                this.panX = 0;
+                this.panY = 0;
+                this.applyTransform();
+                this.updateZoomControls();
+            }
+
+            applyTransform() {
+                const currentSlide = this.carouselSlides.children[this.currentIndex];
+                if (currentSlide) {
+                    const img = currentSlide.querySelector('img');
+                    if (img) {
+                        img.style.transform = `scale(${this.zoomLevel}) translate(${this.panX / this.zoomLevel}px, ${this.panY / this.zoomLevel}px)`;
+                    }
+                }
+            }
+
+            updateZoomControls() {
+                const zoomInBtn = document.getElementById('zoomInBtn');
+                const zoomOutBtn = document.getElementById('zoomOutBtn');
+                
+                if (zoomInBtn) zoomInBtn.disabled = this.zoomLevel >= 5;
+                if (zoomOutBtn) zoomOutBtn.disabled = this.zoomLevel <= 1;
             }
 
             bindEvents() {
@@ -612,8 +786,9 @@
                     this.applySortAndFilter();
                 });
 
-                this.superheroFilter.addEventListener('click', () => {
-                    this.toggleSuperheroDropdown();
+                this.superheroFilter.addEventListener('change', async () => {
+                    const selectedSuperhero = this.superheroFilter.value;
+                    await this.loadSuperheroComics(selectedSuperhero);
                 });
 
                 this.homeLink.addEventListener('click', (e) => {
@@ -632,6 +807,8 @@
                 this.carousel.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
                 });
+
+                this.bindPanZoomEvents();
             }
 
             async loadComicsData() {
@@ -655,56 +832,56 @@
                     comic.superheroes.forEach(hero => allSuperheroes.add(hero));
                 });
 
-                this.superheroDropdown.innerHTML = '';
+                this.superheroFilter.innerHTML = '<option value="">All Comics</option>';
                 Array.from(allSuperheroes).sort().forEach(hero => {
-                    const option = document.createElement('div');
-                    option.className = 'multiselect-option';
-                    option.innerHTML = `
-                        <input type="checkbox" id="hero-${hero}" value="${hero}">
-                        <label for="hero-${hero}">${hero}</label>
-                    `;
-                    
-                    const checkbox = option.querySelector('input');
-                    checkbox.addEventListener('change', () => {
-                        if (checkbox.checked) {
-                            this.selectedSuperheroes.add(hero);
-                            option.classList.add('selected');
-                        } else {
-                            this.selectedSuperheroes.delete(hero);
-                            option.classList.remove('selected');
-                        }
-                        this.updateSuperheroFilterDisplay();
-                        this.applySortAndFilter();
-                    });
-                    
-                    this.superheroDropdown.appendChild(option);
+                    const option = document.createElement('option');
+                    option.value = hero;
+                    option.textContent = hero;
+                    this.superheroFilter.appendChild(option);
                 });
             }
 
-            toggleSuperheroDropdown() {
-                const isVisible = this.superheroDropdown.style.display === 'block';
-                this.superheroDropdown.style.display = isVisible ? 'none' : 'block';
-            }
-
-            updateSuperheroFilterDisplay() {
-                if (this.selectedSuperheroes.size === 0) {
-                    this.superheroFilter.value = 'Select superheroes...';
-                } else {
-                    this.superheroFilter.value = Array.from(this.selectedSuperheroes).join(', ');
+            async loadSuperheroComics(superhero) {
+                if (!superhero) {
+                    console.log(superhero)
+                    // Load all comics (original data)
+                    await this.loadComicsData();
+                    return;
+                }
+                
+                this.showLoading();
+                try {
+                    // Construct URL for superhero-specific JSON
+                    //const superheroSlug = superhero.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+                    const response = await fetch(this.homepages[superhero]);
+                    
+                    if (response.ok) {
+                        this.comics = await response.json();
+                    } else {
+                        // Fallback to filtering existing comics if superhero-specific JSON doesn't exist
+                        console.warn(`No specific data found for ${superhero}, filtering existing comics`);
+                        this.comics = this.comics.filter(comic => 
+                            comic.superheroes.includes(superhero)
+                        );
+                    }
+                    
+                    this.applySortAndFilter();
+                } catch (error) {
+                    console.error(`Failed to load ${superhero} comics:`, error);
+                    // Fallback to filtering existing comics
+                    this.comics = this.comics.filter(comic => 
+                        comic.superheroes.includes(superhero)
+                    );
+                    this.applySortAndFilter();
+                } finally {
+                    this.hideLoading();
                 }
             }
 
             applySortAndFilter() {
                 let filtered = [...this.comics];
 
-                // Apply superhero filter
-                if (this.selectedSuperheroes.size > 0) {
-                    filtered = filtered.filter(comic => 
-                        comic.superheroes.some(hero => this.selectedSuperheroes.has(hero))
-                    );
-                }
-
-                // Apply sorting
+                // Apply sorting (no superhero filtering since it's handled by data loading)
                 if (this.currentSortBy === 'alphabetical') {
                     filtered.sort((a, b) => a.title.localeCompare(b.title));
                 } else if (this.currentSortBy === 'chronological') {
@@ -910,6 +1087,9 @@
                 if (this.isTransitioning || this.comicImages.length === 0) return;
                 
                 this.isTransitioning = true;
+                
+                // Reset zoom and pan for new slide
+                this.resetZoom();
                 
                 const translateX = -this.currentIndex * 100;
                 this.carouselSlides.style.transform = `translateX(${translateX}vw)`;
